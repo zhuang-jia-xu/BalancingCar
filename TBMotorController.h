@@ -1,4 +1,4 @@
-class TBMotorController
+  class TBMotorController
 {
 protected:
     int _ena, _in1, _in2, _enb, _in3, _in4;

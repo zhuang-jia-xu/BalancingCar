@@ -63,8 +63,8 @@ const int PWMA = 6;
 const int PWMB = 5;
 const int STBY = 9;  // 「待機」控制接Arduino的11腳
 
-double motorSpeedFactorLeft = 0.4;
-double motorSpeedFactorRight = 0.4;
+double motorSpeedFactorLeft = 0.7;
+double motorSpeedFactorRight = 0.6;
 TBMotorController motorController(PWMA, AIN1, AIN2, PWMB, BIN1, BIN2, motorSpeedFactorLeft, motorSpeedFactorRight);
 //PID
 double originalSetpoint = 180;
@@ -73,9 +73,9 @@ double movingAngleOffset = 0.1;
 double input, output;
 
 //adjust these values to fit your own design
-double Kp = 40;   
-double Kd = 1.5;
-double Ki = 0;
+double Kp = 30;   
+double Kd = 0.1;
+double Ki = 1;
 PID pid(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 
 int speed;
@@ -183,17 +183,45 @@ void loop() {
   // if programming failed, don't try to do anything
   if (!dmpReady) return;
   // read a packet from FIFO
+  if (Serial.available() > 0) {
+    // read the incoming byte:
+    char chr;
+    int i = 0;
+    char data[5]={};
+    int paras[3]={};
+    int count = 0;
+    while ((chr = Serial.read()) != '\n') {
+      // 確認輸入的字元介於'0'和'9'
+    if (chr >= '0' && chr <= '9') {
+      data[i] = chr;
+      i++;  
+      }
+    else if(chr == ','){
+      data[i] = '\0';
+      paras[count] = atoi(data);
+      count++;
+      i = 0;
+      }
+    }
+    Serial.print("Kp\t");
+    Serial.print(paras[0]);
+    Serial.print("Kd\t");
+    Serial.print(paras[1]);
+    Serial.print("Ki\t");
+    Serial.println(paras[2]);
+    pid.SetTunings(paras[0], paras[2], paras[1]);//void PID::SetTunings(double Kp, double Ki, double Kd)
+  }
   if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
     // display Euler angles in degrees
     mpu.dmpGetQuaternion(&q, fifoBuffer);
     mpu.dmpGetGravity(&gravity, &q);
     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-    Serial.print("ypr\t");
-    Serial.print(ypr[0] * 180/M_PI);
-    Serial.print("\t");
-    Serial.print(ypr[1] * 180/M_PI);
-    Serial.print("\t");
-    Serial.println(ypr[2] * 180/M_PI);
+//    Serial.print("ypr\t");
+//    Serial.print(ypr[0] * 180/M_PI);
+//    Serial.print("\t");
+//    Serial.print(ypr[1] * 180/M_PI);
+//    Serial.print("\t");
+//    Serial.println(ypr[2] * 180/M_PI);
       
     input = ypr[1] * 180/M_PI + 180;
     // blink LED to indicate activity
@@ -201,6 +229,11 @@ void loop() {
     digitalWrite(LED_PIN, blinkState);
   }
   pid.Compute();
+//  Serial.print("Input:");
+//  Serial.print(input);
+//  Serial.print("\t");
+//  Serial.print("Output:");
+//  Serial.println(output);
   speed = motorController.move(output, MIN_ABS_SPEED);
-  Serial.println(output);
+
 }
