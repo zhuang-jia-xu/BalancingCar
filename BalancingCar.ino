@@ -11,6 +11,13 @@
     #include "Wire.h"
 #endif
 
+#include <CurieBLE.h>
+BLEService carService("19b10000-e8f2-537e-4f6c-d104768a1214"); // BLE LED Service
+// BLE LED Switch Characteristic - custom 128-bit UUID, read and writable by central
+BLEUnsignedCharCharacteristic cmdCharacteristic("19b10000-e8f2-537e-4f6c-d104768a1214", BLERead | BLEWrite);
+
+const int LED_PIN = LED_BUILTIN; // pin to use for the LED
+
 // class default I2C address is 0x68
 // specific I2C addresses may be passed as a parameter here
 // AD0 low = 0x68 (default for SparkFun breakout and InvenSense evaluation board)
@@ -19,7 +26,7 @@ MPU6050 mpu;
 //MPU6050 mpu(0x69); // <-- use for AD0 high
 
 #define INTERRUPT_PIN 2  // use pin 2 on Arduino Uno & most boards
-#define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
+//#define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 #define MIN_ABS_SPEED 30
 bool blinkState = false;
 const double M_PI=3.1415926535897932384626433832795028841950;
@@ -64,7 +71,7 @@ const int PWMB = 5;
 const int STBY = 9;  // 「待機」控制接Arduino的11腳
 
 double motorSpeedFactorLeft = 0.7;
-double motorSpeedFactorRight = 0.6;
+double motorSpeedFactorRight = 0.7;
 TBMotorController motorController(PWMA, AIN1, AIN2, PWMB, BIN1, BIN2, motorSpeedFactorLeft, motorSpeedFactorRight);
 //PID
 double originalSetpoint = 180;
@@ -73,55 +80,20 @@ double movingAngleOffset = 0.1;
 double input, output;
 
 //adjust these values to fit your own design
-double Kp = 30;   
-double Kd = 0.1;
-double Ki = 1;
+double Kp = 40;   
+double Kd = 0.5;
+double Ki = 30;
 PID pid(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 
 int speed;
 
+int cmd = 0;
+int offset = 0;
 // ================================================================
 // ===                      INITIAL SETUP                       ===
 // ================================================================
 
-void setup() {
-    // join I2C bus (I2Cdev library doesn't do this automatically)
-    #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-        Wire.begin();
-        Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
-    #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
-        Fastwire::setup(400, true);
-    #endif
-
-    // initialize serial communication
-    // (115200 chosen because it is required for Teapot Demo output, but it's
-    // really up to you depending on your project)
-    Serial.begin(115200);
-    while (!Serial); // wait for Leonardo enumeration, others continue immediately
-
-    // NOTE: 8MHz or slower host processors, like the Teensy @ 3.3V or Arduino
-    // Pro Mini running at 3.3V, cannot handle this baud rate reliably due to
-    // the baud timing being too misaligned with processor ticks. You must use
-    // 38400 or slower in these cases, or use some kind of external separate
-    // crystal solution for the UART timer.
-
-    // initialize device
-    Serial.println(F("Initializing I2C devices..."));
-    mpu.initialize();
-    pinMode(INTERRUPT_PIN, INPUT);
-
-    // verify connection
-    Serial.println(F("Testing device connections..."));
-    Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
-
-    // wait for ready
-    Serial.println(F("\nSend any character to begin DMP programming and demo: "));
-    while (Serial.available() && Serial.read()); // empty buffer
-    while (!Serial.available());                 // wait for data
-    while (Serial.available() && Serial.read()); // empty buffer again
-
-    // load and configure the DMP
-    Serial.println(F("Initializing DMP..."));
+void calibrate(){
     devStatus = mpu.dmpInitialize();
 
     // supply your own gyro offsets here, scaled for min sensitivity
@@ -162,6 +134,66 @@ void setup() {
         Serial.print(devStatus);
         Serial.println(F(")"));
     }
+}
+
+void setup() {
+    // join I2C bus (I2Cdev library doesn't do this automatically)
+    #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+        Wire.begin();
+        Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
+    #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
+        Fastwire::setup(400, true);
+    #endif
+
+    // initialize serial communication
+    // (115200 chosen because it is required for Teapot Demo output, but it's
+    // really up to you depending on your project)
+    Serial.begin(115200);
+//    while (!Serial); // wait for Leonardo enumeration, others continue immediately
+
+    // NOTE: 8MHz or slower host processors, like the Teensy @ 3.3V or Arduino
+    // Pro Mini running at 3.3V, cannot handle this baud rate reliably due to
+    // the baud timing being too misaligned with processor ticks. You must use
+    // 38400 or slower in these cases, or use some kind of external separate
+    // crystal solution for the UART timer.
+
+    // initialize device
+    Serial.println(F("Initializing I2C devices..."));
+    mpu.initialize();
+    pinMode(INTERRUPT_PIN, INPUT);
+
+    // verify connection
+    Serial.println(F("Testing device connections..."));
+    Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
+    // begin initialization
+    BLE.begin();
+    // set advertised local name and service UUID:
+    BLE.setLocalName("CarCar");
+    BLE.setAdvertisedService(carService);
+    // add the characteristic to the service
+    carService.addCharacteristic(cmdCharacteristic);
+    // add service
+    BLE.addService(carService);
+    // set the initial value for the characeristic:
+    cmdCharacteristic.setValue(0);
+    // start advertising
+    BLE.advertise();
+
+    Serial.println("BLE LED Peripheral");
+    
+    // wait for ready
+    Serial.println(F("\nSend any character to begin DMP programming and demo: "));
+    //Serial Init version
+//    while (Serial.available() && Serial.read()); // empty buffer
+//    while (!Serial.available());                 // wait for data
+//    while (Serial.available() && Serial.read()); // empty buffer again
+    //BLE Init version
+    while (!cmdCharacteristic.written()); // wait for data
+    
+    // load and configure the DMP
+    Serial.println(F("Initializing DMP..."));
+    calibrate();
+    
     //setup PID
     pid.SetMode(AUTOMATIC);
     pid.SetSampleTime(10);
@@ -171,24 +203,16 @@ void setup() {
     // set STANDBY pin HIGH
     pinMode(STBY, OUTPUT);
     digitalWrite(STBY, HIGH);
+    digitalWrite(LED_PIN, HIGH); //Built-IN LED 
 }
 
-
-
-// ================================================================
-// ===                    MAIN PROGRAM LOOP                     ===
-// ================================================================
-
-void loop() {
-  // if programming failed, don't try to do anything
-  if (!dmpReady) return;
-  // read a packet from FIFO
+void PIDtuning(){
   if (Serial.available() > 0) {
     // read the incoming byte:
     char chr;
     int i = 0;
     char data[5]={};
-    int paras[3]={};
+    float paras[3]={};
     int count = 0;
     while ((chr = Serial.read()) != '\n') {
       // 確認輸入的字元介於'0'和'9'
@@ -209,31 +233,95 @@ void loop() {
     Serial.print(paras[1]);
     Serial.print("Ki\t");
     Serial.println(paras[2]);
-    pid.SetTunings(paras[0], paras[2], paras[1]);//void PID::SetTunings(double Kp, double Ki, double Kd)
+    pid.SetTunings(paras[0], paras[2], paras[1]/10);//void PID::SetTunings(double Kp, double Ki, double Kd)
   }
-  if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
-    // display Euler angles in degrees
+}
+
+void mpu_Compute(){
+  // display Euler angles in degrees
     mpu.dmpGetQuaternion(&q, fifoBuffer);
     mpu.dmpGetGravity(&gravity, &q);
     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-//    Serial.print("ypr\t");
-//    Serial.print(ypr[0] * 180/M_PI);
-//    Serial.print("\t");
-//    Serial.print(ypr[1] * 180/M_PI);
-//    Serial.print("\t");
-//    Serial.println(ypr[2] * 180/M_PI);
-      
-    input = ypr[1] * 180/M_PI + 180;
+    input = ypr[1] * 180/M_PI + 180.5;
     // blink LED to indicate activity
+    Serial.print("Input\t");
+    Serial.print(input);
+    Serial.print(" Setpoint\t");
+    Serial.print(setpoint);
+    Serial.print(" Error\t");
+    Serial.println(setpoint - input);
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
-  }
-  pid.Compute();
-//  Serial.print("Input:");
-//  Serial.print(input);
-//  Serial.print("\t");
-//  Serial.print("Output:");
-//  Serial.println(output);
-  speed = motorController.move(output, MIN_ABS_SPEED);
+}
+// ================================================================
+// ===                    MAIN PROGRAM LOOP                     ===
+// ================================================================
 
+void loop() {
+  // if programming failed, don't try to do anything
+  if (!dmpReady){
+    motorController.move(0, 0);
+    return;
+  }
+  // listen for BLE peripherals to connect:
+  BLEDevice central = BLE.central();
+  // if a central is connected to peripheral:
+  if (central) {
+    Serial.print("Connected to central: ");
+    // print the central's MAC address:
+    Serial.println(central.address());
+    // while the central is still connected to peripheral:
+    while (central.connected()) {
+      // read a packet from FIFO
+      if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
+        mpu_Compute();
+      }
+      PIDtuning();
+      if(cmdCharacteristic.written()){
+        cmd = cmdCharacteristic.value();
+        Serial.println(cmd);
+        digitalWrite(STBY, HIGH);
+      }
+      if (cmd == 0) {
+//        Serial.println("Stop");
+        setpoint = 180 + offset;
+        pid.Compute();
+        speed = motorController.move(output, MIN_ABS_SPEED);
+      } 
+      else if(cmd == 1){
+//        Serial.println("Forward");
+        setpoint = 178.5 + offset;
+        pid.Compute();
+        speed = motorController.move(output, MIN_ABS_SPEED);
+      }
+      else if(cmd == 2){
+//        Serial.println("Backward");
+        setpoint = 181.5 + offset;
+        pid.Compute();
+        speed = motorController.move(output, MIN_ABS_SPEED);
+      }
+      else if(cmd == 3){
+        pid.Compute();
+        motorController.turnRight(output, MIN_ABS_SPEED);
+      }
+      else if(cmd == 4){
+        pid.Compute();
+        motorController.turnLeft(output, MIN_ABS_SPEED);
+      }
+      else if(cmd == 10){
+        offset -= 0.5;
+        cmd = 0;
+      }
+      else if(cmd == 11){
+        motorController.move(0, MIN_ABS_SPEED);
+        digitalWrite(STBY, LOW);
+        calibrate();
+        cmd = 0;
+      }
+      else if(cmd == 12){
+        offset += 0.5;
+        cmd = 0;
+      } 
+    }
+  }
 }
