@@ -9,8 +9,8 @@ public:
     void move(int leftSpeed, int rightSpeed, int minAbsSpeed);
     void move(int speed);
     int move(int speed, int minAbsSpeed);
-    void turnLeft(int speed, int minAbsSpeed);
-    void turnRight(int speed, int minAbsSpeed);
+    void turnLeft(int speed, bool kick);
+    void turnRight(int speed, bool kick);
     void stopMoving();
 };
 
@@ -94,64 +94,4 @@ void TBMotorController::stopMoving()
     digitalWrite(_enb, HIGH);
     
     _currentSpeed = 0;
-}
-
-void TBMotorController::turnLeft(int speed, int minAbsSpeed)
-{
-    int direction = 1;
-    
-    if (speed < 0)
-    {
-        direction = -1;
-        
-        speed = min(speed, -1*minAbsSpeed);
-        speed = max(speed, -255);
-    }
-    else
-    {
-        speed = max(speed, minAbsSpeed);
-        speed = min(speed, 255);
-    }
-    
-    // if (speed == _currentSpeed) return -1;
-    
-    int realSpeed = max(minAbsSpeed, abs(speed));
-    digitalWrite(_in1, speed > 0 ? HIGH : LOW);
-    digitalWrite(_in2, speed > 0 ? LOW : HIGH);
-    digitalWrite(_in3, speed > 0 ? HIGH : LOW);
-    digitalWrite(_in4, speed > 0 ? LOW : HIGH);
-    analogWrite(_ena, 0);
-    analogWrite(_enb, realSpeed * _motorBConst);
-    
-    _currentSpeed = direction * realSpeed;
-}
-
-void TBMotorController::turnRight(int speed, int minAbsSpeed)
-{
-    int direction = 1;
-    
-    if (speed < 0)
-    {
-        direction = -1;
-        
-        speed = min(speed, -1*minAbsSpeed);
-        speed = max(speed, -255);
-    }
-    else
-    {
-        speed = max(speed, minAbsSpeed);
-        speed = min(speed, 255);
-    }
-    
-    // if (speed == _currentSpeed) return -1;
-    
-    int realSpeed = max(minAbsSpeed, abs(speed));
-    digitalWrite(_in1, speed > 0 ? HIGH : LOW);
-    digitalWrite(_in2, speed > 0 ? LOW : HIGH);
-    digitalWrite(_in3, speed > 0 ? HIGH : LOW);
-    digitalWrite(_in4, speed > 0 ? LOW : HIGH);
-    analogWrite(_ena, realSpeed * _motorBConst);
-    analogWrite(_enb, 0);
-    
-    _currentSpeed = direction * realSpeed;
 }
