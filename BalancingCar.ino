@@ -49,6 +49,7 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
 void dmpDataReady() {
     mpuInterrupt = true;
+    Serial.println("interrupt detected");
 }
 
 // ================================================================
@@ -229,11 +230,11 @@ void loop() {
     digitalWrite(LED_PIN, blinkState);
   }
   pid.Compute();
-//  Serial.print("Input:");
-//  Serial.print(input);
-//  Serial.print("\t");
-//  Serial.print("Output:");
-//  Serial.println(output);
   speed = motorController.move(output, MIN_ABS_SPEED);
 
+  Serial.print("Input:");
+  Serial.print(input);
+  Serial.print("\t");
+  Serial.print("Output:");
+  Serial.println(output);
 }
